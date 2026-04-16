@@ -7,8 +7,7 @@ function App() {
   const [incidents, setIncidents] = useState([]);
   const [chartData, setChartData] = useState([]);
 
-  // CHANGE THIS URL once your Render backend is live
-  const API_BASE = "http://127.0.0.1:8000"; 
+  const API_BASE = "https://webincidents.parkerpeterman.com/"; 
 
   const fetchData = () => {
     fetch(`${API_BASE}/metrics/summary`)
