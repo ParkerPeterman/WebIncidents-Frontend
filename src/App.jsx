@@ -1,106 +1,123 @@
-import { useState, useEffect } from 'react'
-import './App.css'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, Legend // Added missing components
+} from 'recharts';
+import './App.css';
 
 function App() {
   const [metrics, setMetrics] = useState(null);
-  const [incidents, setIncidents] = useState([]);
   const [chartData, setChartData] = useState([]);
+  // --- New State for Trends ---
+  const [trendData, setTrendData] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [hiddenCategories, setHiddenCategories] = useState([]);
+  // ----------------------------
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const API_BASE = "https://webincidents.parkerpeterman.com/"; 
-
-  const fetchData = () => {
-    fetch(`${API_BASE}/metrics/summary`)
-      .then(res => res.json())
-      .then(data => setMetrics(data))
-      .catch(err => console.error("Summary error:", err));
-
-    fetch(`${API_BASE}/incidents/active`)
-      .then(res => res.json())
-      .then(data => setIncidents(data));
-
-    fetch(`${API_BASE}/metrics/chart`)
-      .then(res => res.json())
-      .then(data => setChartData(data));
-  };
+  const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#0088fe"];
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const summaryRes = await fetch('http://127.0.0.1:8000/metrics/summary');
+        const summaryData = await summaryRes.json();
+        
+        const chartRes = await fetch('http://127.0.0.1:8000/metrics/chart');
+        const chartJson = await chartRes.json();
+
+        // 3. Fetch Trend Data
+        const trendRes = await fetch('http://127.0.0.1:8000/metrics/trends');
+        const trendJson = await trendRes.json();
+
+        setMetrics(summaryData);
+        setChartData(chartJson);
+        setTrendData(trendJson.data);
+        setCategories(trendJson.categories);
+      } catch (err) {
+        console.error("Fetch Error:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchData();
   }, []);
 
-  const handleGenerate = () => {
-    fetch(`${API_BASE}/generate-data`, { method: 'POST' })
-      .then(() => fetchData()); // Refresh data after generating
+  const handleLegendClick = (e) => {
+    const { dataKey } = e;
+    setHiddenCategories(prev => 
+      prev.includes(dataKey) ? prev.filter(c => c !== dataKey) : [...prev, dataKey]
+    );
   };
+
+  if (loading) return <div className="loading">Loading Real-Time Metrics...</div>;
+  if (error) return <div className="error-container"><h2>Error: {error}</h2></div>;
 
   return (
     <div className="dashboard">
-      <div className="header-row">
-        <h1>Service Advisory</h1>
-        <button onClick={handleGenerate} className="generate-btn">
-          Simulate New Incidents
-        </button>
+      <header className="chart-section">
+        <h1>Service Advisory Dashboard</h1>
+        <div className={`status ${metrics?.system_health?.toLowerCase()}`}>
+          System Health: <strong>{metrics?.system_health}</strong>
+        </div>
+      </header>
+
+      <div className="kpi-container">
+        <div className="card">
+          <h3>Total Tickets</h3>
+          <p className="value">{metrics?.total_tickets || 0}</p>
+        </div>
+        <div className="card">
+          <h3>Active Outages</h3>
+          <p className="value">{metrics?.active_outages || 0}</p>
+        </div>
+        <div className="card">
+          <h3>Avg. Resolution (Hrs)</h3>
+          <p className="value">{metrics?.mttr_hours || 'N/A'}</p>
+        </div>
       </div>
-      
-      {metrics ? (
-        <>
-          <div className="kpi-container">
-            <div className="card">
-              <h3>Mean Time To Repair</h3>
-              <p className="value">{metrics.mttr_hours} hrs</p>
-            </div>
-            <div className="card">
-              <h3>Active Outages</h3>
-              <p className="value">{metrics.active_outages}</p>
-            </div>
-            <div className="card">
-              <h3>System Health</h3>
-              <p className={`status ${metrics.system_health.toLowerCase()}`}>
-                {metrics.system_health}
-              </p>
-            </div>
-          </div>
 
-          <div className="chart-section">
-            <h2>Incident Volume (Total vs Resolved)</h2>
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="total" fill="#dfe6e9" barSize={60} />
-                  <Bar dataKey="resolved" fill="#2ecc71" barSize={35} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+      <section className="chart-section">
+        <h2>Ticket Resolution by Category</h2>
+        <div style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip cursor={{fill: 'transparent'}} />
+              <Bar dataKey="total" fill="#df9292" name="Total" />
+              <Bar dataKey="resolved" fill="#2ecc71" name="Resolved" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
 
-          <div className="incident-section">
-            <h2>Active Service Advisories</h2>
-            <table className="incident-table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Issue</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incidents.map((incident) => (
-                  <tr key={incident.ticket_id}>
-                    <td>{incident.service_name}</td>
-                    <td>{incident.issue_type}</td>
-                    <td><span className="badge">{incident.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      ) : (
-        <p>Connecting to Sentinel API...</p>
-      )}
+        <h2 style={{marginTop: '40px'}}>Incident Trends by Category</h2>
+        <div style={{ width: '100%', height: 400 }}>
+          <ResponsiveContainer>
+            <LineChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }} />
+              {categories.map((cat, index) => (
+                <Line
+                  key={cat}
+                  type="monotone"
+                  dataKey={cat}
+                  stroke={colors[index % colors.length]}
+                  hide={hiddenCategories.includes(cat)}
+                  strokeWidth={2}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
     </div>
   );
 }
