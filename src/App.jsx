@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  LineChart, Line, Legend // Added missing components
+  LineChart, Line, Legend,
+  ScatterChart, Scatter, ZAxis, Cell
 } from 'recharts';
 import './App.css';
 
 function App() {
   const [metrics, setMetrics] = useState(null);
   const [chartData, setChartData] = useState([]);
-  // --- New State for Trends ---
   const [trendData, setTrendData] = useState([]);
   const [categories, setCategories] = useState([]);
   const [hiddenCategories, setHiddenCategories] = useState([]);
-  // ----------------------------
+  const [heatmapData, setHeatmapData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -27,14 +27,17 @@ function App() {
         const chartRes = await fetch('http://127.0.0.1:8000/metrics/chart');
         const chartJson = await chartRes.json();
 
-        // 3. Fetch Trend Data
         const trendRes = await fetch('http://127.0.0.1:8000/metrics/trends');
         const trendJson = await trendRes.json();
+
+        const heatmapRes = await fetch('http://127.0.0.1:8000/metrics/heatmap');
+        const heatmapJson = await heatmapRes.json();
 
         setMetrics(summaryData);
         setChartData(chartJson);
         setTrendData(trendJson.data);
         setCategories(trendJson.categories);
+        setHeatmapData(heatmapJson);
       } catch (err) {
         console.error("Fetch Error:", err);
         setError(err.message);
@@ -51,6 +54,20 @@ function App() {
       prev.includes(dataKey) ? prev.filter(c => c !== dataKey) : [...prev, dataKey]
     );
   };
+
+  const getColor = (value, max) => {
+    const safeMax = max > 0 ? max : 1;
+    const ratio = Math.min(value / safeMax, 1);
+  
+    const r = Math.floor(220 + (11) * ratio);
+    const g = Math.floor(245 + (-169) * ratio);
+    const b = Math.floor(255 + (-195) * ratio);
+  
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
+const maxIncidentCount = heatmapData.length > 0 ? Math.max(...heatmapData.map(d => d.value)) : 0;
+const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   if (loading) return <div className="loading">Loading Real-Time Metrics...</div>;
   if (error) return <div className="error-container"><h2>Error: {error}</h2></div>;
@@ -117,6 +134,41 @@ function App() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        <h2>Incident Density (Day vs. Hour)</h2>
+        <div style={{width: '100%', height: 350}}>
+          <ResponsiveContainer>
+            <ScatterChart margin={{top: 20, right: 20, bottom: 20, left:20}}>
+              <XAxis 
+                type="number"
+                dataKey="hour"
+                Name="Hour"
+                domain={[-1,24]}
+                unit=":00"
+                ticks={[0,4,8,12,16,20,23]}
+              />
+              <YAxis
+                type="number"
+                dataKey="day_idx"
+                name="Day"
+                domain={[-0.5,6.5]}
+                tickFormatter={(idx) => days[idx]}
+                reversed
+                ticks={[0, 1, 2, 3, 4, 5, 6]}
+              />
+              <ZAxis type="number" dataKey="value" range={[400,401]} />
+              <Tooltip cursor={{ strokeDasharray: '3 3'}} />
+              <Scatter data={heatmapData} shape="square">
+                {heatmapData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={getColor(entry.value, maxIncidentCount)} stroke="#fff" strokeWidth={1} />
+                ))}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+        <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#666' }}>
+          Darker/Redder squares indicate high-incident time periods.
+          </p>
       </section>
     </div>
   );
